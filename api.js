@@ -9,19 +9,15 @@
 ///////////////////////////
 //  MYSQL Client Library //
 ///////////////////////////
-var mysql = require('mysql');
-var conn = mysql.createConnection({
-  host     : 'localhost',
-  user     : 'root',
-  password : 'root',
-  database : 'blog'
-});
+var fs = require("fs");
+var file = "blog.db";
 
-conn.connect();
+var sqlite3 = require("sqlite3").verbose();
+var db = new sqlite3.Database(file);
 
 var msg = {
-  msg:"",
   status:0,
+  msg:"",
   data:[]
 }
 //////////////////////////
@@ -62,10 +58,10 @@ module.exports = {
       email = email.toLowerCase();
       password = passwordHash.crypt(password);
 
-      rows = sync.await(conn.query('SELECT MAX(`author_id`) ID FROM `author`;',sync.defer()));
+      rows = sync.await(db.all('SELECT MAX(`author_id`) ID FROM `author`;',[],sync.defer()));
       id = rows[0].ID + 1;
 
-      rows = sync.await(conn.query("SELECT `email`, `username` FROM `author`;",sync.defer()));
+      rows = sync.await(db.all("SELECT `email`, `username` FROM `author`;",[],sync.defer()));
 
       for(var i = 0; i < rows.length; i++ ){
         if (rows[i].email == email || rows[i].username == username){
@@ -77,7 +73,7 @@ module.exports = {
         }
       }
 
-      sync.await(conn.query("INSERT INTO `author`(`author_id`,`display_name`,`username`,`password`,`email`)\
+      sync.await(db.run("INSERT INTO `author`(`author_id`,`display_name`,`username`,`password`,`email`)\
     	VALUES (?,?,?,?,?);",[id,name,username,password,email],sync.defer()));
 
       msg.msg = "Register Successfull";
@@ -94,7 +90,7 @@ module.exports = {
       var verified = false;
       var id = 0;
 
-      var rows = sync.await(conn.query("SELECT `author_id` ID,`email`, `username`,`password` FROM `author`;",sync.defer()));
+      var rows = sync.await(db.all("SELECT `author_id` ID,`email`, `username`,`password` FROM `author`;",[],sync.defer()));
       //console.log(rows);
       for(var i = 0; i <rows.length; i++){
         if (rows[i].email == username || rows[i].username == username){
@@ -108,7 +104,7 @@ module.exports = {
 
       if(verified){
         var accesstoken = rand_token.generate(16);
-        sync.await(conn.query("UPDATE `author`\
+        sync.await(db.run("UPDATE `author`\
         SET `accesstoken`=?\
         WHERE `author_id`=?;",[accesstoken,id],sync.defer()));
 
@@ -131,7 +127,7 @@ module.exports = {
       var verified = false;
       var id = 0;
 
-      var rows = sync.await(conn.query("SELECT `author_id` ID, `accesstoken` TOKEN FROM `author`;",sync.defer()));
+      var rows = sync.await(db.all("SELECT `author_id` ID, `accesstoken` TOKEN FROM `author`;",[],sync.defer()));
       for(var i = 0; i <rows.length; i++){
         if (rows[i].TOKEN == accesstoken){
           verified = true;
@@ -141,7 +137,7 @@ module.exports = {
       }
 
       if(verified){
-        sync.await(conn.query("UPDATE `author`\
+        sync.await(db.run("UPDATE `author`\
         SET `accesstoken`=NULL\
         WHERE `author_id`= ?;",[id],sync.defer()));
 
@@ -161,14 +157,14 @@ module.exports = {
 
   getPosts:function (res){
     sync.fiber(function(){
-      var rows = sync.await(conn.query("SELECT `post_id`,`title`, `content`, `date_published`, display_name\
+      var rows = sync.await(db.all("SELECT `post_id`,`title`, `content`, `date_published`, display_name\
       FROM `post` p JOIN `author` a ON p.`author_id` = a.`author_id`\
       WHERE `enabled` = 1\
-      ORDER BY `date_published` DESC;", sync.defer()));
+      ORDER BY `date_published` DESC;",[], sync.defer()));
 
-      var cats = sync.await(conn.query("SELECT `name`, `post_id` id\
+      var cats = sync.await(db.all("SELECT `name`, `post_id` id\
       FROM `post_to_category` p JOIN `category` c ON p.`category_id` = c.`category_id`"
-      ,sync.defer()));
+      ,[],sync.defer()));
 
       //console.log(cats);
       var dat =  cats.reduce(function(obj, item) {
@@ -198,12 +194,12 @@ module.exports = {
   },
   getPost:function (res,post_id){
     sync.fiber(function(){
-      var rows = sync.await(conn.query("SELECT `post_id`,`title`, `content`, `date_published`, display_name\
+      var rows = sync.await(db.all("SELECT `post_id`,`title`, `content`, `date_published`, display_name\
       FROM `post` p JOIN `author` a ON p.`author_id` = a.`author_id`\
       WHERE `enabled` = 1 AND `post_id` = ?\
       ORDER BY `date_published` DESC;", [post_id] , sync.defer()));
 
-      var cats = sync.await(conn.query("SELECT `name`, `post_id` id\
+      var cats = sync.await(db.all("SELECT `name`, `post_id` id\
       FROM `post_to_category` p \
       JOIN `category` c ON p.`category_id` = c.`category_id`\
       WHERE `post_id` = ?;",[post_id],sync.defer()));
@@ -243,11 +239,11 @@ module.exports = {
       var id = 0;
       var author_id = 0;
 
-      var rows = sync.await(conn.query('SELECT MAX(`post_id`) ID FROM `post`;',sync.defer()));
+      var rows = sync.await(db.all('SELECT MAX(`post_id`) ID FROM `post`;',[],sync.defer()));
 
       id = rows[0].ID + 1;
 
-      rows = sync.await(conn.query("SELECT `author_id` ID, `accesstoken` TOKEN FROM `author`;",sync.defer()));
+      rows = sync.await(db.all("SELECT `author_id` ID, `accesstoken` TOKEN FROM `author`;",[],sync.defer()));
       for(var i = 0; i <rows.length; i++){
         if (rows[i].TOKEN == accesstoken){
           verified = true;
@@ -257,12 +253,14 @@ module.exports = {
       }
 
       if(verified){
-        sync.await(conn.query("INSERT `post`\
+        var date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        sync.await(db.run("INSERT INTO `post`\
         (`post_id`,`title`,`content`,`date_published`,`featured`,`enabled`,`views`,`author_id`)\
-        VALUES(?,?,?,SYSDATE(),?,?,?,?);",[id,title,content,0,1,0,author_id],sync.defer()));
+        VALUES(?,?,?,?,?,?,?,?);",[id,title,content,date,0,1,0,author_id],sync.defer()));
 
         for(var i = 0; i<category.length;i++){
-          sync.await(conn.query("INSERT `post_to_category`\
+          sync.await(db.run("INSERT INTO `post_to_category`\
           (`post_id`,`category_id`)\
           VALUES(?,?);",[id,category[i]],sync.defer()));
         }
@@ -286,7 +284,7 @@ module.exports = {
       var author_id = true;
       msg.msg = "Login Expired";
 
-      var rows = sync.await(conn.query("SELECT `author_id`, `accesstoken` TOKEN FROM `author`;",sync.defer()));
+      var rows = sync.await(db.all("SELECT `author_id`, `accesstoken` TOKEN FROM `author`;",[],sync.defer()));
       for(var i = 0; i <rows.length; i++){
         if (rows[i].TOKEN == accesstoken){
           author_id = rows[i].author_id;
@@ -294,7 +292,7 @@ module.exports = {
         }
       }
 
-      var rows = sync.await(conn.query("SELECT `author_id` FROM `post` \
+      var rows = sync.await(db.all("SELECT `author_id` FROM `post` \
       WHERE `post_id` = ?;",[post_id],sync.defer()));
       if (rows[0].author_id == author_id){
         verified = true;
@@ -304,15 +302,15 @@ module.exports = {
 
       if(verified){
 
-        sync.await(conn.query("UPDATE `posts` \
+        sync.await(db.run("UPDATE `posts` \
         SET `title`=?, `content`=? \
         WHERE post_id = ?;",[title,content,post_id],sync.defer()));
 
-        sync.await(conn.query("DELETE FROM `post_to_category`\
+        sync.await(db.run("DELETE FROM `post_to_category`\
         WHERE `post_id` = ?;",[post_id],sync.defer()));
 
         for(var i = 0; i<category.length;i++){
-          sync.await(conn.query("INSERT `post_to_category`\
+          sync.await(db.run("INSERT INTO `post_to_category`\
           (`post_id`,`category_id`)\
           VALUES(?,?);",[post_id, id,category[i]],sync.defer()));
         }
@@ -333,7 +331,7 @@ module.exports = {
       var verified = false;
       msg.msg = "Login Expired";
 
-      var rows = sync.await(conn.query("SELECT `author_id`, `accesstoken` TOKEN FROM `author`;",sync.defer()));
+      var rows = sync.await(db.all("SELECT `author_id`, `accesstoken` TOKEN FROM `author`;",[],sync.defer()));
       for(var i = 0; i <rows.length; i++){
         if (rows[i].TOKEN == accesstoken){
           author_id = rows[i].author_id;
@@ -341,7 +339,7 @@ module.exports = {
         }
       }
 
-      var rows = sync.await(conn.query("SELECT `author_id` FROM `post` \
+      var rows = sync.await(db.all("SELECT `author_id` FROM `post` \
       WHERE `post_id` = ?;",[post_id],sync.defer()));
       if (rows[0].author_id == author_id){
         verified = true;
@@ -350,9 +348,9 @@ module.exports = {
       }
 
       if(verified){
-        sync.await(conn.query("DELETE FROM `post_to_category` WHERE `post_id` = ?;",[post_id],sync.defer()));
+        sync.await(db.run("DELETE FROM `post_to_category` WHERE `post_id` = ?;",[post_id],sync.defer()));
 
-        sync.await(conn.query("DELETE FROM `post` WHERE post_id = ?;",[post_id],sync.defer()));
+        sync.await(db.run("DELETE FROM `post` WHERE post_id = ?;",[post_id],sync.defer()));
 
         msg.msg = "Post Deleted";
         msg.status = 1;
