@@ -1,11 +1,23 @@
+#!/usr/bin/env node
+
 var express = require('express');
 var fs = require('fs');
+
+var file = "blog.db";
+var exists = fs.existsSync(file);
+
 var app = express();
 var bodyParser = require('body-parser');
 var cors = require('cors');
 
+////////////////
+//  Blog's API //
+////////////////
 var blog = require('./api.js');
 
+///////////////////////
+//  Http Server Code //
+///////////////////////
 app.use(bodyParser.json());
 app.use(cors());
 
