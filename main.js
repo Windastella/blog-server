@@ -1,5 +1,15 @@
 #!/usr/bin/env node
 
+var option = require('commander');
+
+option
+  .version('0.1.0')
+  .usage('[options] <file ...>')
+  .option('-p, --port <n>', 'Set Port Number',(val)=>{return val}, 8000)
+  .option('-h, --host <s>', 'Set Host Address',(val)=>{return val}, '0.0.0.0')
+  .option('-t, --test', 'Testing build')
+  .parse(process.argv);
+
 var express = require('express');
 var fs = require('fs');
 
@@ -63,6 +73,5 @@ app.post('/', function(req, res){
     //res.end('thanks');
 });
 
-port = 8000;
-app.listen(port);
-console.log('Listening at http://localhost:' + port);
+app.listen(option.port);
+console.log('Listening at http://'+ option.host + `:` + option.port);
